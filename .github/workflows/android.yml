@@ -5,9 +5,16 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
 
     steps:
       - name: Checkout code
@@ -29,26 +36,37 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Debug env
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          java -version 2>&1
+
       - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleDebug --no-daemon 2>&1 | tee build.log ; EXIT_CODE=${PIPESTATUS[0]}
+          if [ $EXIT_CODE -ne 0 ]; then cat build.log; fi
+          exit $EXIT_CODE
+
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 7
 
       - name: Get APK info
+        if: success()
         id: apk
         run: |
           APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
           echo "path=$APK_PATH" >> $GITHUB_OUTPUT
           echo "name=$(basename $APK_PATH)" >> $GITHUB_OUTPUT
 
-      - name: Upload APK to Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
         with:
-          files: ${{ steps.apk.outputs.path }}
-          tag_name: v${{ github.run_number }}
-          name: CloudPhoneManager v${{ github.run_number }}
-          draft: true
-          prerelease: false
-          body: |
-            自动构建版本
-            - Run: #${{ github.run_number }}
-            - Commit: ${{ github.sha }}
-            - APK: ${{ steps.apk.outputs.name }}
+          name: app-debug.apk
+          path: ${{ steps.apk.outputs.path }}
+          retention-days: 30
