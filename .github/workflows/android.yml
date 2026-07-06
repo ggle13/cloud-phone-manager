@@ -5,14 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
 
     steps:
       - name: Checkout code
@@ -37,15 +32,32 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Upload to Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: app/build/outputs/apk/debug/*.apk
-          tag_name: v${{ github.run_number }}
-          name: CloudPhoneManager v${{ github.run_number }}
-          draft: true
-          prerelease: false
-          body: |
-            Auto-built APK
-            - Run: #${{ github.run_number }}
-            - Commit: ${{ github.sha }}
+      - name: Push APK to repo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
+          APK_NAME=$(basename $APK)
+          
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          # Add APK as a blob directly to git index (no checkout needed)
+          BLOB_SHA=$(git hash-object -w "$APK")
+          git --bare ls-tree main releases >/dev/null 2>&1 || \
+            git ls-tree main -- releases 2>/dev/null || echo "no_releases_dir"
+          
+          # Use git update-index to add without checkout
+          git update-index --add --cacheinfo 100644,$BLOB_SHA,"releases/$APK_NAME"
+          TREE_SHA=$(git write-tree)
+          
+          # Get current commit SHA
+          COMMIT_SHA=$(git rev-parse main)
+          
+          # Create commit
+          NEW_COMMIT_SHA=$(git commit-tree -p $COMMIT_SHA -m "Build: $APK_NAME (run #$GITHUB_RUN_NUMBER)" $TREE_SHA)
+          
+          # Push to main
+          git push origin $NEW_COMMIT_SHA:main
+          
+          echo "✅ APK pushed to releases/$APK_NAME"
