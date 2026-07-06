@@ -32,14 +32,27 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v1
-        with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Download APK (verify)
-        uses: actions/download-artifact@v1
-        with:
-          name: app-debug
-          path: downloaded/
+      - name: Commit APK to repo
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
+          APK_NAME=$(basename $APK_PATH)
+          
+          # Get file info
+          FILE_SHA=$(git hash-object -w $APK_PATH)
+          
+          # Update git index
+          git checkout --orphan temp_branch
+          git reset --hard
+          cp $APK_PATH ./$APK_NAME
+          git add $APK_NAME
+          git commit -m "Build APK: $APK_NAME (run #$GITHUB_RUN_NUMBER)"
+          git filter-branch --force --prune-empty --subdirectory-filter . HEAD
+          git push -f HEAD:refs/heads/apk-build || true
+          
+          # Also commit to main with APK
+          git checkout main
+          mkdir -p releases
+          cp $APK_PATH releases/$APK_NAME
+          git add releases/$APK_NAME
+          git commit --allow-empty -m "Build: $APK_NAME (run #$GITHUB_RUN_NUMBER)"
+          git push
