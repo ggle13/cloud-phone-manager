@@ -5,9 +5,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout code
@@ -29,23 +34,18 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Show environment
-        run: |
-          echo "JAVA_HOME=$JAVA_HOME"
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "=== SDK contents ==="
-          ls $ANDROID_HOME/
-          echo "=== cmdline-tools ==="
-          ls $ANDROID_HOME/cmdline-tools/ 2>/dev/null || echo "no cmdline-tools"
-          ls $ANDROID_HOME/platforms/ 2>/dev/null || echo "no platforms"
-          ls $ANDROID_HOME/build-tools/ 2>/dev/null || echo "no build-tools"
-
       - name: Build debug APK
-        run: |
-          set -e
-          ./gradlew assembleDebug --no-daemon --info 2>&1 | tail -100
+        run: ./gradlew assembleDebug --no-daemon
 
-      - name: Show build output
-        run: |
-          ls -la app/build/outputs/apk/debug/ 2>/dev/null || echo "No APK dir"
-          find app/build -name "*.apk" 2>/dev/null || echo "No APK found"
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/build/outputs/apk/debug/*.apk
+          tag_name: v${{ github.run_number }}
+          name: CloudPhoneManager v${{ github.run_number }}
+          draft: true
+          prerelease: false
+          body: |
+            Auto-built APK
+            - Run: #${{ github.run_number }}
+            - Commit: ${{ github.sha }}
