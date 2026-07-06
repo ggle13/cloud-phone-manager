@@ -29,26 +29,26 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Show environment
-        run: |
-          echo "JAVA_HOME=$JAVA_HOME"
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          ./gradlew --version
-
       - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
+        run: ./gradlew assembleDebug --no-daemon
 
-      - name: Upload build log on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
+      - name: Get APK info
+        id: apk
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
+          echo "path=$APK_PATH" >> $GITHUB_OUTPUT
+          echo "name=$(basename $APK_PATH)" >> $GITHUB_OUTPUT
 
-      - name: Upload APK
-        if: success()
-        uses: actions/upload-artifact@v4
+      - name: Upload APK to Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: app-debug.apk
-          path: app/build/outputs/apk/debug/*.apk
+          files: ${{ steps.apk.outputs.path }}
+          tag_name: v${{ github.run_number }}
+          name: CloudPhoneManager v${{ github.run_number }}
+          draft: true
+          prerelease: false
+          body: |
+            自动构建版本
+            - Run: #${{ github.run_number }}
+            - Commit: ${{ github.sha }}
+            - APK: ${{ steps.apk.outputs.name }}
